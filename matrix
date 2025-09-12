@@ -1,0 +1,396 @@
+#!/bin/bash
+############################################################################################################
+#PROGRAMMER NAME: Erik Bowers
+############################################################################################################
+#PROGRAM NAME: matrix
+############################################################################################################
+#PROGRAM: Assignment 1 for CS344 at OSU, Winter term 2018
+#	 Various mathimatical manipulations on matrices.
+#	 Dimensions, transposition, mean, addition, and multiplication
+############################################################################################################
+#Functions:
+#	All functions return to stdout. Nothing is saved from any computations.
+#	   dims()
+#		takes an input matrix from stdin or a file, returns the dimensions of said matrix
+#
+#	   transpose()
+#	   	takes an input matrix from stdin or a file, returns that matrix transposed
+#
+#	   mean()
+#		takes an input matrix from stdin or a file, returns the [1xN] row vector of said matrix
+#
+#	   add()
+#		takes input of two files, returns the addition matrix of said matrices
+#		if the input matrices are not of valid size for addition, error is sent to stderr
+#
+#	   multiply()
+#		takes input of two files, returns the multiplied matrix of said matrices
+#		if the input matrices are not of valid size for multiplication, an error is sent to stderr
+############################################################################################################
+#NOTE: comments are above the line or block of code they're referencing.
+#      some debug lines are commented out but left in, with a comment of #DEBUG at the end of the line.
+#	   most of the debug lines were removed, as even commented out they really muddled the code.
+############################################################################################################
+
+######################################################
+#dims function
+#read matrix from stdin or a file
+#return number of rows and number of columns to stdout
+######################################################
+
+dims(){
+rows=0
+columns=0
+#a straight forward, though inelegant, loop that counts the number of rows. The number of columns 
+#never changes but is recalculated each time. This adds computational time, but leads to cleaner code
+#than having two seperate loops for this. If we were graded on computation time, I'd rework it.
+while read currentLine
+do
+	columns=0
+	rows=`expr $rows + 1`
+	for i in $currentLine
+	do
+		columns=`expr $columns + 1`
+	done
+#Reads from input file if there is one, and if there isn't then read from stdin until
+ CTRL+D is sent
+done < "${1:-/dev/stdin}"
+echo "$rows $columns"
+} #end dims function
+
+##############################################################
+#transpose function
+#read matrix from stdin or a file
+#return the transposed matrix. [NxM] -> [MxN]
+#The wikipedia page over transposition (en.wikipedia.org/wiki/Transpose) used extensively for checking
+#that the transpositions were being done correctly. 
+##############################################################
+
+transpose(){
+newMatrix="transposedMatrix"
+tempMatrix="temp"
+tempFile="tempFile"
+trap "rm -f $newMatrix$$; rm -f $tempMatrix$$; rm -f $tempFile$$ echo 'CTRL+C recieved, exiting'; exit 1" INT HUP TERM
+maxColumns=0
+i=1
+tempLine=""
+#places the matrix from input file into a new file, and if there isn't a file takes from stdin and places it in a file.
+#This is important so there is always a temp file to manipulate in the following blocks of code.
+cat "${1:-/dev/stdin}" > $tempFile$$
+#cat -A $tempFile$$ #DEBUG
+
+#the same code from dims() that calculates the number of rows and columns in a matrix
+#this could have been done with a seperate function for internal calculations, but this way is
+#easier to follow at a glance than a call to, say, dimensions(), and the requisite code to get
+#rows and columns from it.
+while read input
+do
+	maxColumns=0
+	for line in $input
+	do
+		maxColumns=`expr $maxColumns + 1`
+	done
+#done <$1
+done < $tempFile$$
+
+#this while loop walks through each column of the input matrix, cutting a column, turning it into a row
+#and appending it to file newMatrix. The end result is a transposed matrix sitting in a file.
+while [ $i -le $maxColumns ]
+do
+	cut -f $i $tempFile$$ > "$tempMatrix$$"
+	#The old lines were processed using sed, but I thankfully saw that wasn't allowed before the due date
+	#cat $tempMatrix$$ | tr '\n' '\t' | sed 's/.$//' >> "$newMatrix$$"
+	#Having to place commands inside of $(commands) for this to work is annoying, but the output
+	#is really powerful! Being able to pipe stuff already felt pretty cool, but this is just awesome!
+	tempLine=$(cat $tempMatrix$$ | tr '\n' '\t')
+	#The new way still works fine, but the need for an extra variable is a bit annoying
+	#Learned from cyberciti.biz/faq/bash-remove-last-character-from-a-string-line-word/
+	#which was linked in the class forum
+	echo "${tempLine%?}" >> "$newMatrix$$"
+	((i++))
+done
+#this while loop echos out the whole transposed matrix.
+#in hindsight this could have just been done with a cat of newMatrix instead of a whole loop
+#because the transposed matrix is in its own file, it would be very easy to modify this function
+#to keep that transposed matrix. If each line was just echoed out instead the end result for this
+#assignment would be a (probably) faster computation time. Being able to keep that file while testing
+#and debugging was very valuable though.
+while read finalMatrix
+do
+	echo "$finalMatrix"
+done < $newMatrix$$
+rm -f "$newMatrix$$"
+rm -f "$tempMatrix$$"
+rm -f "$tempFile$$"
+} #end transpose function
+
+#############################################################
+#mean function:
+#read matrix from stdin or a file
+#return the row vector of that matrix. [NxP] -> [1xP]
+#############################################################
+
+mean(){
+columnNumber=0
+mean=""
+temp="tempLine"
+trap "rm -f $temp$$; 'CTRL+C received, exiting'; exit 1" INT HUP TERM
+maxColumns=0
+
+#get number of columns in the matrix.
+#this code is modified from the dims() function to only care about column size.
+while read input
+do
+	maxColumns=0
+	for line in $input
+	do
+		maxColumns=`expr $maxColumns + 1`
+	done
+done < "${1:-/dev/stdin}"
+
+#
+while [ $columnNumber -lt $maxColumns ]
+do
+	sum=0
+	count=0
+	average=0
+	columnNumber=`expr $columnNumber + 1`
+	cut -f $columnNumber $1 | tr -s '\n' '\t' > $temp$$
+	
+	for i in $(cat $temp$$)
+	do
+		num=$i
+		count=`expr $count + 1`
+		sum=`expr $sum + $num`
+	done
+#if count is zero, then just set average to zero. otherwise, use that nifty formula for commercial rounding
+	if [ $count -eq 0 ]
+	then
+		average=0
+	else
+		average=$(( ($sum + ($count/2)*( ($sum>0)*2-1)) / $count))
+	fi
+	mean+="$average"
+	mean+="	"
+	done
+#This is the perfect time to use this over sed, as it avoids another line of code
+echo "${mean%?}"
+rm -f "$temp$$"
+} #end mean function
+
+########################################################
+#add function:
+#read two matrices from two files, output their sum
+#both matrices must be the same dimensions
+########################################################
+
+add(){
+temp="temp"
+i=1
+leftLine="lLine"
+rightLine="rLine"
+combinedLines="cLines"
+tempLine="tLine"
+finishedLine="final"
+trap "rm -f $leftLine$$; rm -f $rightLine$$; rm -f $combinedLines$$; rm -f $tempLine$$; rm -f $finishedLine$$; 'CTRL+C received, exiting'; exit 1" INT HUP TERM
+tab="	"
+lRows=0
+lColumn=0
+rRows=0
+rColumns=0
+
+#get the number of rows and columns from the first matrix input. Again, just the dims() function code
+while read left
+do
+	lColumns=0
+	lRows=`expr $lRows + 1`
+	for thing in $left
+	do
+		lColumns=`expr $lColumns + 1`
+	done
+done <$1
+
+#get the number of rows and columns from the second matrix input.
+while read right
+do
+	rColumns=0
+	rRows=`expr $rRows + 1`
+	for thing in $right
+	do
+		rColumns=`expr $rColumns + 1`
+	done
+done <$2
+
+#check to make sure the given matrices are the same dimensions, otherwise they can't be added together
+if [ $rColumns -eq $lColumns ] && [ $rRows -eq $lRows ]
+then
+	#this whole loop is complex and annoying. I wish we had 2-dimensional arrays but it is what it is
+	#the logic is as follows, with comments through the code too
+	#get the same line from both the left and the right matrix
+	#add those lines into a file. It's now easy to get the number at the same position from each matrix
+	#cut a column from combinedLine, and turn it into a row
+	#use a while loop to add up the two numbers from that cut row
+	#append this sum to finishedLine, adding a tab or newline as needed.
+	#the end result is a new matrix that is the sum of the two input matrices.
+	while [ $i -le $lRows ]
+	do
+		#get the i-th line from the file
+		head -$i <$1 | tail -1 > $leftLine$$
+		head -$i <$2 | tail -1 > $rightLine$$
+		#add both lines into the same file
+		cat $leftLine$$ > $combinedLines$$
+		cat $rightLine$$ >> $combinedLines$$
+		count=1
+		while [ $count -le $lColumns ]
+		do
+			#cut a column from the file made up of both lines, make it a row, dump into tempLine
+			cut -f $count $combinedLines$$ | tr '\n' '\t' > $tempLine$$
+			sum=0
+			#add up the row
+			for j in $(cat $tempLine$$)
+			do
+				sum=`expr $sum + $j`
+			done
+			#append the sum of the row to the finishedLine
+			echo -n "$sum" >> $finishedLine$$
+			#add a tab if there is still work to be done on that line, a new line if not
+			if [ "$count" -eq $lColumns ]
+			then
+				echo "" >> $finishedLine$$
+			else
+				echo -n "$tab" >> $finishedLine$$
+			fi
+			((count++))
+		done
+		((i++))
+	done
+	cat "$finishedLine$$"
+	rm -f "$finishedLine$$"
+	rm -f "$leftLine$$"
+	rm -f "$rightLine$$"
+	rm -f "$combinedLines$$"
+	rm -f "$tempLine$$"
+#if they aren't the same size, then echo out an error to stderr and get out
+else
+	echo "Error: Matrices given are not the same dimensions, can't preform addition." 1>&2
+	exit 1
+fi
+} #end add function
+
+#################################################################
+#multiply function:
+#read two matrices from two files, output their multiplied matrix
+#both matricies must be of valid dimensions. [NxM] * [MxP] -> [NxP]
+#where both M's must be equal
+#################################################################
+
+multiply(){
+i=1
+j=1
+k=1
+lColumns=0
+rColumns=0
+lRows=0
+rRows=0
+N=0 #left's number of rows
+P=0 #right's number of columns
+M=0 #left's number of columns. Also right's number of rows
+
+#and one last time, uses the dims() function loop to count the number of rows and columns in each matrix
+while read left
+do
+	lColumns=0
+	lRows=`expr $lRows + 1`
+	for thing in $left
+	do
+		lColumns=`expr $lColumns + 1`
+	done
+done <$1
+
+while read right
+do
+	rColumns=0
+	rRows=`expr $rRows + 1`
+	for thing in $right
+	do
+		rColumns=`expr $rColumns + 1`
+	done
+done <$2
+
+#make sure that multiplication can actually be done on these two matrices. M == M
+if [ $lColumns -eq $rRows ]
+then
+N=$lRows
+P=$rColumns
+M=$lColumns
+newMatrix="newMatrix"
+leftLine="leftLine"
+rightLine="rightLine"
+trap "rm -f $newMatrix$$; rm -f $leftLine$$; rm -f $rightLine$$; 'CTRL+C received, exiting'; exit 1" INT HUP TERM
+tL=0
+tR=0
+tempLine=""
+
+#Matrix multiplication multiplies rows from left matrix with columns from right matrix
+#so this loop grabs the required row and column from their respective matrix, and does the math on their
+#values before placing the result into a new matrix.
+#The wikipedia page on matrix multiplication (en.wikipedia.org/wiki/Matrix_multiplication) used a whole
+#bunch on creating this loop, and in checking that the output was correct. 
+#en.wikipedia.org/wiki/Matrix_multiplication_algorithm was also used in getting the logic of the algorithm
+#working correctly. Wikipedia has better algorithm pages than most text books, as they're always so
+#clear and concise, so I use them quite a bit. And unlike a search on Stack Overflow, I'm still left
+#having to figure out all the code bits. <shakeCane>As someone who has been programming since before Stack Overflow
+#was a thing, it often feels unfair to have such quick access to working code. I'm jealous of those who
+#got to learn programming with help so close! </shakeCane>
+while [ $i -le $N ]
+do
+	while [ $j -le $P ]
+	do
+		sum=0
+		while [ $k -le $M ]
+		do
+			#get the proper line from the left matrix
+			head -$i $1 | tail -1 > $leftLine$$
+			#get the proper column from the right matrix
+			cut -f $j $2 | tr '\n' '\t' > $rightLine$$
+			#get the right value from the left and right matrices
+			tL=$(cut -f$k $leftLine$$)
+			tR=$(cut -f$k $rightLine$$)
+			#add the values together
+			sum=$(( ($sum + ($tL * $tR) ) ))
+			((k++))
+		done
+		#place the resulting sum into newMatrix.
+		#add a tab if there is more on this line to do, a newline character if there isn't
+		echo -n $sum >> $newMatrix$$
+		if [ $j -eq $P ]
+		then
+			echo >> $newMatrix$$
+		else
+		echo -n '	' >> $newMatrix$$
+		fi
+		k=1
+		((j++))
+	done
+	((i++))
+	j=1
+done
+#just cat out the finished matrix. So much nicer than using a while loop! Yay, learning things!
+#And, again, the fact that the finished matrix is stored in a file instead of just echoing out
+#each line means it's super easy to modify this to keep that multiplied matrix, if ever needed to.
+#This was done for testing reasons, but I really like how reusable it made this function.
+cat $newMatrix$$
+rm -f "$newMatrix$$"
+rm -f "$leftLine$$"
+rm -f "$rightLine$$"
+
+#if the matrices aren't the correct size for multiplication, throw and error to stderr and get out
+else
+	echo "Error: Matrices are not valid dimensions for multiplication." 1>&2
+	exit 1
+fi
+} #end multiply function
+
+#allows the functions in this whole program to be called from the command line with something such as:
+#matrix dims testMatrix
+"$@"
